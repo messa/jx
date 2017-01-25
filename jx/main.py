@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 import logging
+from os.path import expanduser
 from pathlib import Path
 import re
 import socket
@@ -12,49 +13,70 @@ logger = logging.getLogger(__name__)
 
 def jx_main():
     p = argparse.ArgumentParser()
+    p.add_argument('--list', '-l', action='store_true')
     p.add_argument('entry', nargs='*')
     args = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format='%(message)s')
 
-    message = ' '.join(args.entry).strip()
-    assert message
+    journal = Journal()
 
-    from os.path import expanduser
-    data_dir = Path(expanduser('~/.jx'))
-    if not data_dir.exists():
-        data_dir.mkdir()
-        logger.info('Created directory %s', data_dir)
+    if args.list:
+        assert 0, 'NIY'
 
-    entry_dir = data_dir / 'entries'
-    if not entry_dir.exists():
-        entry_dir.mkdir()
-
-    day_file_name = 'day.{dt}.{hn}.yaml'.format(
-        dt=datetime.now().strftime('%Y-%m-%d'),
-        hn=get_hostname())
-    day_file_path = entry_dir / day_file_name
-
-    if day_file_path.exists():
-        with day_file_path.open() as f:
-            day_data = yaml.safe_load(f)
-        assert isinstance(day_data['jx_day_records'], dict)
     else:
-        day_data = {'jx_day_records': {}}
+        message = ' '.join(args.entry).strip()
+        assert message
+        journal.add_entry(message)
 
-    day_entries = day_data['jx_day_records'].setdefault('entries', [])
 
-    day_entries.append({
-        'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'message': {
-            'plaintext': message,
-        },
-    })
 
-    tmp_path = day_file_path.with_name('.{}.tmp'.format(day_file_path.name))
+class Journal:
+
+    def __init__(self):
+        self._data_dir = Path(expanduser('~/.jx'))
+        self._entry_dir = self._data_dir / 'entries'
+
+    def _create_data_dir(self):
+        if not self._data_dir.exists():
+            self._data_dir.mkdir()
+            logger.info('Created directory %s', self._data_dir)
+
+    def _create_entry_dir(self):
+        self._create_data_dir()
+        if not self._entry_dir.exists():
+            self._entry_dir.mkdir()
+
+    def add_entry(self, message):
+        day_file_name = 'day.{dt}.{hn}.yaml'.format(
+            dt=datetime.now().strftime('%Y-%m-%d'),
+            hn=get_hostname())
+        day_file_path = self._entry_dir / day_file_name
+        if day_file_path.exists():
+            with day_file_path.open() as f:
+                day_data = yaml.safe_load(f)
+            assert isinstance(day_data['jx_day_records'], dict)
+        else:
+            day_data = {'jx_day_records': {}}
+        day_entries = day_data['jx_day_records'].setdefault('entries', [])
+        day_entries.append({
+            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'message': {
+                'plaintext': message,
+            },
+        })
+        self._create_entry_dir()
+        write_file(day_file_path, day_data)
+
+
+def write_file(path, content):
+    assert not isinstance(content, bytes)
+    if not isinstance(content, str):
+        content = yaml.safe_dump(content, width=200, default_flow_style=False)
+    tmp_path = path.with_name('.{}.tmp'.format(path.name))
     with tmp_path.open('w') as f:
-        yaml.safe_dump(day_data, f, width=200, default_flow_style=False)
-    tmp_path.rename(day_file_path)
+        f.write(content)
+    tmp_path.rename(path)
 
 
 def get_hostname():
