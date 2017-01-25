@@ -22,7 +22,7 @@ def jx_main():
     journal = Journal()
 
     if args.list:
-        assert 0, 'NIY'
+        journal.show_entries()
 
     else:
         message = ' '.join(args.entry).strip()
@@ -67,6 +67,29 @@ class Journal:
         })
         self._create_entry_dir()
         write_file(day_file_path, day_data)
+
+    def show_entries(self):
+        if not self._entry_dir.is_dir():
+            return
+        is_day_file_name = lambda s: s.startswith('day.') and s.endswith('.yaml')
+        day_paths = [p for p in self._entry_dir.iterdir() if is_day_file_name(p.name)]
+        all_entries = []
+        for day_path in day_paths:
+            with day_path.open() as f:
+                day_data = yaml.safe_load(f)
+            day_entries_raw = day_data['jx_day_records']['entries']
+            for raw_entry in day_entries_raw:
+                all_entries.append(Entry(raw_entry))
+        all_entries.sort(key=lambda entry: entry.date)
+        for entry in all_entries:
+            print('{}: {}'.format(entry.date, entry.message))
+
+
+class Entry:
+
+    def __init__(self, raw_entry):
+        self.date = datetime.strptime(raw_entry['date'],'%Y-%m-%d %H:%M:%S')
+        self.message = raw_entry['message']['plaintext']
 
 
 def write_file(path, content):
